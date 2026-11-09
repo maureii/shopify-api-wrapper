@@ -1,1 +1,1 @@
-# shopify-graphql-api
+# Shopify Rest API Wrapper 
