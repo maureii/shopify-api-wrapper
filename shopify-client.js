@@ -1,5 +1,5 @@
 import {createAdminApiClient} from '@shopify/admin-api-client';
-import { getToken } from './authentication';
+import { getToken } from './shopify-oauth';
 import { existsSync } from 'node:fs';
 
 if (existsSync('.env')) {
@@ -19,5 +19,22 @@ const client = createAdminApiClient({
 
 
 export const performOperation = async (operation, variables = {}) => {
-  client.request(operation,{ variables, retries : 2 });
+  return client.request(operation,{ variables });
 }
+
+const result = await performOperation(
+  `
+    query ProductQuery($id: ID!) {
+      product(id: $id) {
+        id
+        title
+        handle
+      }
+    }
+  `,
+  {
+    id: 'gid://shopify/Product/9700217782497',
+  }
+);
+
+console.log(result.data);
