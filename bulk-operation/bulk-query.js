@@ -75,6 +75,3 @@ const runBulkQuery = async () => {
 };
 
 export default runBulkQuery;
-
-const products = await runBulkQuery();
-console.log(products);
