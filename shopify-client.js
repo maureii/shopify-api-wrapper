@@ -6,7 +6,7 @@ if (existsSync('.env')) {
   process.loadEnvFile('.env');
 }
 
-const API_VERSION = process.env.SHOPIFY_API_VERSION_NEW;
+const API_VERSION = process.env.SHOPIFY_API_VERSION;
 const SHOP = process.env.SHOPIFY_STORE_URL;
 const ACCESS_TOKEN =  await getToken();
 
@@ -21,20 +21,3 @@ const client = createAdminApiClient({
 export const performOperation = async (operation, variables = {}) => {
   return client.request(operation,{ variables });
 }
-
-const result = await performOperation(
-  `
-    query ProductQuery($id: ID!) {
-      product(id: $id) {
-        id
-        title
-        handle
-      }
-    }
-  `,
-  {
-    id: 'gid://shopify/Product/9700217782497',
-  }
-);
-
-console.log(result.data);
