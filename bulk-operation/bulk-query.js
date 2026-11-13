@@ -1,7 +1,17 @@
 import { performOperation } from "../shopify-client.js";
-import { GET_PRODUCTS_QUERY } from "./get-products.js";
+import { GET_PRODUCTS_QUERY } from "./product-fetch.js";
 
-const INIT_BULK_QUERY = `
+const POLLING_INTERVAL_MS = 3000;
+
+const BULK_STATUS = Object.freeze({
+  CREATED: "CREATED",
+  RUNNING: "RUNNING",
+  COMPLETED: "COMPLETED",
+});
+
+const ACTIVE_BULK_STATUSES = new Set([BULK_STATUS.CREATED, BULK_STATUS.RUNNING]);
+
+const RUN_BULK_QUERY_MUTATION = `
   mutation ($query: String!) {
     bulkOperationRunQuery(query: $query) {
       bulkOperation {
@@ -16,7 +26,7 @@ const INIT_BULK_QUERY = `
   }
 `;
 
-const GET_BULK_STATUS = `
+const GET_BULK_OPERATION_QUERY = `
   query ($bulkId: ID!) {
     bulkOperation(id: $bulkId) {
       id
@@ -32,46 +42,112 @@ const GET_BULK_STATUS = `
   }
 `;
 
-const POLLING_INTERVAL = 3000;
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const wait = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const executeGraphQL = async (query, variables) => {
+const joinMessages = (items) => items.map(({ message }) => message).join("\n");
+
+const isBulkOperationActive = ({ status }) => ACTIVE_BULK_STATUSES.has(status);
+
+const executeGraphQLRequest = async (query, variables) => {
   const { data, errors } = await performOperation(query, variables);
 
-  if (errors?.length) throw new Error(errors.map(error => error.message).join('\n'));
+  if (errors?.length) {
+    throw new Error(joinMessages(errors));
+  }
+
   return data;
 };
 
-const getBulkOperation = async (operationId) => {
-  const result = await executeGraphQL(GET_BULK_STATUS, { bulkId: operationId });
-  return result.bulkOperation;
+// Submits the products query as a bulk operation and returns its initial state.
+const startBulkOperation = async () => {
+  const { bulkOperationRunQuery } = await executeGraphQLRequest(
+    RUN_BULK_QUERY_MUTATION,
+    { query: GET_PRODUCTS_QUERY }
+  );
+
+  const { bulkOperation, userErrors } = bulkOperationRunQuery ?? {};
+
+  if (userErrors?.length) {
+    throw new Error(joinMessages(userErrors));
+  }
+
+  if (!bulkOperation) {
+    throw new Error("Shopify did not return a bulk operation.");
+  }
+
+  return bulkOperation;
+};
+
+// Fetches the current state of a bulk operation.
+const fetchBulkOperation = async (bulkOperationId) => {
+  const { bulkOperation } = await executeGraphQLRequest(
+    GET_BULK_OPERATION_QUERY,
+    { bulkId: bulkOperationId }
+  );
+
+  if (!bulkOperation) {
+    throw new Error(`Bulk operation not found: ${bulkOperationId}`);
+  }
+
+  return bulkOperation;
+};
+
+// Polls until the bulk operation leaves the CREATED / RUNNING states.
+const waitForBulkOperation = async (initialOperation) => {
+  let operation = initialOperation;
+
+  while (isBulkOperationActive(operation)) {
+    await wait(POLLING_INTERVAL_MS);
+
+    operation = await fetchBulkOperation(operation.id);
+
+    console.log(
+      `Status: ${operation.status} | Objects: ${operation.objectCount}`
+    );
+  }
+
+  return operation;
+};
+
+// Throws unless the bulk operation finished successfully. 
+const assertBulkOperationCompleted = ({ status, errorCode }) => {
+  if (status !== BULK_STATUS.COMPLETED) {
+    throw new Error(
+      `Bulk operation failed: ${status} (${errorCode ?? "Unknown error"})`
+    );
+  }
+};
+
+// Downloads the result file (JSONL) produced by a completed bulk operation.
+const downloadBulkOperationFile = async (downloadUrl) => {
+  if (!downloadUrl) {
+    throw new Error("Bulk operation has no download URL.");
+  }
+
+  const response = await fetch(downloadUrl);
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download bulk data: ${response.status} ${response.statusText}`
+    );
+  }
+
+  return response.text();
 };
 
 const runBulkQuery = async () => {
-  const data = await executeGraphQL(INIT_BULK_QUERY, { query: GET_PRODUCTS_QUERY });
+  const startedOperation = await startBulkOperation();
+  console.log(`Bulk operation started: ${startedOperation.id}`);
 
-  const bulkResult = data.bulkOperationRunQuery;
-  if (bulkResult?.userErrors?.length) {
-    throw new Error(bulkResult.userErrors.map(error => error.message).join('\n'));
-  }
+  const finishedOperation = await waitForBulkOperation(startedOperation);
+  assertBulkOperationCompleted(finishedOperation);
 
-  let bulkOperation = bulkResult?.bulkOperation;
-  if (!bulkOperation) throw new Error('Shopify did not return a bulk operation.');
+  console.log(
+    `Bulk operation completed: ${finishedOperation.objectCount} objects`
+  );
 
-  console.log(`Bulk operation started: ${bulkOperation.id}`);
-
-  while (['CREATED', 'RUNNING'].includes(bulkOperation.status)) {
-    await delay(POLLING_INTERVAL);
-    bulkOperation = await getBulkOperation(bulkOperation.id);
-    console.log(`Status: ${bulkOperation.status} | Objects: ${bulkOperation.objectCount}`);
-  }
-
-  if (bulkOperation.status !== 'COMPLETED') throw new Error(`Bulk operation failed: ${bulkOperation.status} (${bulkOperation.errorCode})`);
-
-  const response = await fetch(bulkOperation.url);
-  if (!response.ok) throw new Error(`Failed to download bulk data file: ${response.statusText}`);
-
-  return response.text();
+  return downloadBulkOperationFile(finishedOperation.url);
 };
 
 export default runBulkQuery;
