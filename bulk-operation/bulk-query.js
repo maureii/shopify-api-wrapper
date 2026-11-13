@@ -2,6 +2,7 @@ import { performOperation } from "../shopify-client.js";
 import { GET_PRODUCTS_QUERY } from "./product-fetch.js";
 
 const POLLING_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 300;
 
 const BULK_STATUS = Object.freeze({
   CREATED: "CREATED",
@@ -96,8 +97,12 @@ const fetchBulkOperation = async (bulkOperationId) => {
 // Polls until the bulk operation leaves the CREATED / RUNNING states.
 const waitForBulkOperation = async (initialOperation) => {
   let operation = initialOperation;
+  let attempts = 0;
 
   while (isBulkOperationActive(operation)) {
+    if (++attempts > MAX_POLL_ATTEMPTS) {
+      throw new Error(`Bulk operation timed out after ${MAX_POLL_ATTEMPTS * (POLLING_INTERVAL_MS / 1000)}s.`);
+    }
     await wait(POLLING_INTERVAL_MS);
 
     operation = await fetchBulkOperation(operation.id);
