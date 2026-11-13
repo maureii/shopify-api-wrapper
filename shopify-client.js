@@ -7,17 +7,20 @@ if (existsSync('.env')) {
 }
 
 const API_VERSION = process.env.SHOPIFY_API_VERSION;
-const SHOP = process.env.SHOPIFY_STORE_URL;
-const ACCESS_TOKEN =  await getToken();
+const SHOP = process.env.SHOPIFY_STORE_URL || process.env.SHOPIFY_SHOP;
 
-
-const client = createAdminApiClient({
-  storeDomain: `${SHOP}`,
-  apiVersion: `${API_VERSION}`,
-  accessToken: `${ACCESS_TOKEN}`,
-});
-
+let client;
+let cachedToken;
 
 export const performOperation = async (operation, variables = {}) => {
-  return client.request(operation,{ variables });
-}
+  const token = await getToken();
+  if (!client || cachedToken !== token) {
+    cachedToken = token;
+    client = createAdminApiClient({
+      storeDomain: `${SHOP}`,
+      apiVersion: `${API_VERSION}`,
+      accessToken: `${token}`,
+    });
+  }
+  return client.request(operation, { variables });
+};
