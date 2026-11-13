@@ -5,7 +5,8 @@ if (existsSync('.env')) {
   process.loadEnvFile('.env');
 }
 
-const SHOP = process.env.SHOPIFY_SHOP;
+const rawShop = process.env.SHOPIFY_SHOP || process.env.SHOPIFY_STORE_URL;
+const SHOP = rawShop?.replace(/^https?:\/\//, '').replace(/\.myshopify\.com\/?$/, '');
 const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 
