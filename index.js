@@ -1,9 +1,12 @@
 import Fastify from 'fastify';
 import router from "./routes/router.js";
 
-
 const fastify = Fastify({
   logger: true
+});
+
+fastify.addContentTypeParser('text/jsonl', { parseAs: 'string' }, (req, body, done) => {
+  done(null, body);
 });
 
 fastify.register(router);
