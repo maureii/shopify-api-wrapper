@@ -1,0 +1,18 @@
+import Fastify from 'fastify';
+import router from "./routes/router.js";
+
+
+const fastify = Fastify({
+  logger: true
+});
+
+fastify.register(router);
+
+const start = async () => {
+  try {
+    await fastify.listen({ port: 6100, host: '0.0.0.0' });
+  } catch (err) {
+    fastify.log.error(err);
+  }
+}
+start();
