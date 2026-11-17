@@ -1,6 +1,6 @@
 import runBulkMutation from "../bulk-operation/bulk-mutation";
 import runBulkQuery from "../bulk-operation/bulk-query";
-import { PRODUCT_CREATE_MUTATION } from "../bulk-operation/product-create";
+import { PRODUCT_SET_MUTATION } from "../bulk-operation/product-set";
 
 const handleRouteError = (error, reply, request) => {
   request.log.error(error);
@@ -42,7 +42,7 @@ const routes = async (fastify, options) => {
       }
 
       const fileBlob = new Blob([rawJsonl], { type: "text/jsonl" });
-      const result = await runBulkMutation(fileBlob, PRODUCT_CREATE_MUTATION);
+      const result = await runBulkMutation(fileBlob, PRODUCT_SET_MUTATION);
 
       return reply.send({ success: true, bulkOperation: result });
     } catch (error) {
